@@ -1,51 +1,55 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan');
-const path = require('path');
+require('dotenv').config();
+const sequelize = require('./config/database');
+
+const authRoutes = require('./routes/authRoutes');
+const groupRoutes = require('./routes/groupRoutes');
+const sessionRoutes = require('./routes/sessionRoutes');
+const postRoutes = require('./routes/postRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  }
+}));
 app.use(express.json());
-app.use(morgan('dev'));
 
 // Routes
-app.use('/api/auth', require('./routes/auth.routes'));
-app.use('/api/groups', require('./routes/groups.routes'));
+app.use('/api/auth', authRoutes);
+app.use('/api/groups', groupRoutes);
+app.use('/api/sessions', sessionRoutes);
+app.use('/api/posts', postRoutes);
+app.use('/api/chat', chatRoutes);
 
-// We handle nested routes via parent router:
-const groupsRouter = require('./routes/groups.routes');
-// Mount sessions and posts recursively under group id by injecting it in groups.routes, 
-// wait, a better way is to mount it directly in server.js! No, groups.routes is better. 
-// Actually to avoid changing groups.routes again, I'll mount in server.js using params
-app.use('/api/groups/:groupId/sessions', require('./routes/sessions.routes'));
-app.use('/api/groups/:groupId/posts', require('./routes/posts.routes'));
-
-app.use('/api/dashboard', require('./routes/dashboard.routes'));
-
-// Basic route for dev or if not matching other routes
-app.get('/api', (req, res) => {
-  res.send('Student Study Group Finder API is running...');
+// Basic Route
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'API is running' });
 });
 
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../FRONTEND/dist')));
+const PORT = process.env.PORT || 5000;
 
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../FRONTEND', 'dist', 'index.html'));
-  });
-} else {
-  // If not prod, default catch-all for sanity
-  app.get('/', (req, res) => {
-    res.send('API is running. Please start the frontend separately.');
-  });
-}
-
-// Start Server
+// Start HTTP server unconditionally
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
+
+// Attempt Database Connection asynchronously without crashing Express
+const connectDB = async () => {
+    try {
+        await sequelize.authenticate();
+        console.log('Database connected successfully.');
+        await sequelize.sync();
+    } catch (error) {
+        console.error('\n--> CRITICAL: Database offline! Update your DB_PASS in backend/.env to fix this!');
+        console.error('MySQL Error:', error.message);
+    }
+};
+
+connectDB();
